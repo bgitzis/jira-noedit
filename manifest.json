@@ -5,7 +5,7 @@
   "description": "Blocks Jira's click-to-edit on issue title and description. Toggle via floating 🔒 button.",
   "content_scripts": [
     {
-      "matches": ["https://bookmd.atlassian.net/*"],
+      "matches": ["https://*.atlassian.net/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

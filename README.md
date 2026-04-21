@@ -5,7 +5,7 @@ Chrome extension with two behaviors on Jira issue pages:
 - Blocks click-to-edit on issue title and description. A 🔒 / 🔓 button appears near the Description heading; click it to toggle.
 - Binds **Esc** to click **Cancel** in any description/comment editor — skip scrolling to the bottom of long AI-written descriptions when you've accidentally entered edit mode.
 
-Scoped to `https://bookmd.atlassian.net/*` only.
+Scoped to Atlassian Cloud (`https://*.atlassian.net/*`). To narrow it to a single instance, edit the `matches` pattern in `manifest.json`.
 
 ## Load
 
@@ -14,9 +14,9 @@ Scoped to `https://bookmd.atlassian.net/*` only.
 3. Click **Load unpacked** and pick this folder
 4. Visit a Jira issue — a 🔒 button appears above the description; clicks on title/description are blocked
 
-## Change the Jira host
+## Narrow or change the host scope
 
-Edit the `matches` entry in `manifest.json`, then click **Reload** on the extension card in `chrome://extensions`.
+Edit the `matches` entry in `manifest.json` (e.g. `https://yourorg.atlassian.net/*` for a single instance), then click **Reload** on the extension card in `chrome://extensions`.
 
 ## Troubleshooting
 

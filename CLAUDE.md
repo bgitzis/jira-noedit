@@ -28,7 +28,7 @@ Tradeoff accepted: load-unpacked requires manual reload after edits, and Chrome 
 
 ### Why host-wide `matches`, not `/browse/*` only
 
-Original gist matched `*.atlassian.net/browse/*`. The fork added `/jira/*`. We match the whole host (`bookmd.atlassian.net/*`) instead — simpler than tracking every route pattern Atlassian adds, and the script only acts when its selectors match anyway. Also narrower in host scope than the gist (single Atlassian instance, not all of `*.atlassian.net`) — tighter blast radius.
+Original gist matched `*.atlassian.net/browse/*`. The fork added `/jira/*`. We match the entire Atlassian Cloud host pattern (`*.atlassian.net/*`) instead — simpler than tracking every route pattern Atlassian adds, and the script only acts when its selectors match anyway. Users who want a tighter blast radius can edit `matches` to a specific subdomain.
 
 ### Why content script only — no storage permission, no background worker
 
@@ -113,7 +113,7 @@ There are no automated tests. After any change:
 
 ```
 jira-noedit/
-├── manifest.json     # MV3, matches bookmd.atlassian.net/*, content script only
+├── manifest.json     # MV3, matches *.atlassian.net/*, content script only
 ├── content.js        # The whole extension (~70 lines)
 ├── README.md         # User-facing: install, use, troubleshoot
 └── CLAUDE.md         # This file
