@@ -6,7 +6,7 @@ Guidance for Claude Code (and future-me) when working on this repo.
 
 A minimal Manifest V3 Chrome extension with two behaviors on Jira:
 
-1. **Block click-to-edit** on issue title, description, every comment, and the self-referencing breadcrumb (the last crumb, when its key matches the URL). Toggleable via a floating 🔒 / 🔓 button top-right.
+1. **Block click-to-edit** on issue title, description, every comment, and the self-referencing breadcrumb (the last crumb, when its key matches the URL). Toggleable via a 🔒 / 🔓 button placed next to the breadcrumb crumb (or floating below the header as a fallback).
 2. **Bind Esc → Cancel.** When focus is inside any contenteditable (description/comment editor), pressing Esc clicks the nearest `Cancel` button — saves scrolling to the bottom of long AI-written descriptions after accidental entry into edit mode.
 
 ~100 lines of JS, one content script, no background worker, no popup.
@@ -43,16 +43,17 @@ Two properties worth preserving:
 
 `preventDefault()` is defensive — click has no default action here — but cheap.
 
-### Why a floating button, not anchored near the Description heading
+### Why the button is anchored next to the breadcrumb crumb (with floating fallback)
 
-Two abandoned anchored designs:
-- **Insert before renderer** — button landed *inside* the styled content box.
-- **Insert at renderer's grandparent** — still inside the box; the visual frame extends further up than expected.
-- **Semantic heading walk** — look for an ancestor containing a "Description" heading in a sibling subtree. Never triggered on tested pages (Atlaskit may use buttons/divs, not semantic headings, for collapsible section labels; `querySelector('.ak-renderer-document')` sometimes returned a *comment* renderer first because comments use the same class).
+**Discarded placements and why:**
+- **Above the Description heading** — inserting before the `.ak-renderer-document` landed the button inside the styled content box; its grandparent was still inside. A semantic heading-walk looking for a "Description" heading in a sibling subtree never triggered on real pages (Atlaskit uses buttons/divs for collapsible section labels, not headings; also `querySelector('.ak-renderer-document')` sometimes returned a comment renderer first because comments use the same class).
+- **Fixed top-right** — reliable, but overlapped Jira's user-settings avatar.
 
-The toggle also affects *all comments and the breadcrumb* — not just the description. Anchoring to the description misrepresents scope; a floating button is neutral. The failure modes of the heading walk confirmed the choice: no amount of heuristics beats a fixed-position button for reliability.
+**Current placement:** find the breadcrumb's current-issue crumb (preferred: `<a href="/browse/<CURRENT_KEY>">` whose text equals the key; fallback: any small element with text equal to the key sitting in the top `BREADCRUMB_TOP_MAX_PX` of the viewport), insert the button right after it as an inline sibling. This is the same element we already detect for self-reference click-blocking, so the button placement is self-documenting: the lock sits next to the thing it protects.
 
-Floating tradeoff accepted: slightly more visually noisy. `zIndex: 2147483647` + `position: fixed` puts it above Jira chrome regardless of layout.
+If the crumb can't be found (non-issue page, unfamiliar layout, Atlassian UI drift), fall back to floating **below** Jira's header bar (`top: 70px, right: 10px`) rather than at the very top — the top-right area is occupied by user menu / notifications / help icons.
+
+Tradeoff: correlated failure with breadcrumb detection. If Jira changes how breadcrumbs are rendered, the button moves to the fallback position. The fallback is intentionally visible (not hidden), so the user still has a working toggle even when anchoring fails.
 
 ### Why comments are blocked by the same selector as description
 
@@ -64,9 +65,11 @@ The last crumb on an issue page is the current issue's key, rendered as a link. 
 
 Side effect: a self-link in the description or a comment (mentioning the current issue) is also blocked. Harmless — clicking it would navigate to the same page anyway.
 
-### Why `MutationObserver` with `subtree: false`
+### Why `MutationObserver` with `subtree: true`
 
-The button lives as a direct child of `document.body`, which persists across Jira's SPA route changes. The observer's job is narrow: re-add the button if anything removes it. `childList: true, subtree: false` on body is sufficient and orders of magnitude cheaper than subtree mode (which fires on every keystroke/tooltip/etc.). Callback is a single `getElementById` check.
+The button lives either inside the breadcrumb (when anchoring succeeds) or as a direct child of `body` (fallback). The breadcrumb re-renders on SPA navigation between issues, so we need to detect button disappearance anywhere in the tree — `subtree: true` is required. The callback is cheap: `getElementById(BUTTON_ID)` returns immediately when the button is present, and only on removal do we run the anchor search.
+
+**Historical note:** an earlier version used `subtree: false` when the button was a body-direct-child only. That was correct for its design. The switch to breadcrumb anchoring made the narrower scope insufficient. Classic Chesterton's fence: observer scope depends on where the button lives.
 
 ### Why default-blocked
 
