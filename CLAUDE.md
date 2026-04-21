@@ -49,7 +49,12 @@ Two properties worth preserving:
 - **Above the Description heading** — inserting before the `.ak-renderer-document` landed the button inside the styled content box; its grandparent was still inside. A semantic heading-walk looking for a "Description" heading in a sibling subtree never triggered on real pages (Atlaskit uses buttons/divs for collapsible section labels, not headings; also `querySelector('.ak-renderer-document')` sometimes returned a comment renderer first because comments use the same class).
 - **Fixed top-right** — reliable, but overlapped Jira's user-settings avatar.
 
-**Current placement:** find the breadcrumb's current-issue crumb (preferred: `<a href="/browse/<CURRENT_KEY>">` whose text equals the key; fallback: any small element with text equal to the key sitting in the top `BREADCRUMB_TOP_MAX_PX` of the viewport), insert the button right after it as an inline sibling. This is the same element we already detect for self-reference click-blocking, so the button placement is self-documenting: the lock sits next to the thing it protects.
+**Current placement** (priority order):
+1. `[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]` — Atlaskit's stable testid for the last breadcrumb item. Appended as the last child of the container.
+2. `<a href="/browse/<CURRENT_KEY>">` whose text equals the key — heuristic fallback via URL matching. Inserted as the next sibling after the link.
+3. Any small element with text equal to the key, within the top `BREADCRUMB_TOP_MAX_PX` of the viewport — text-matching last-resort fallback.
+
+All three lean on the same element we detect for self-reference click-blocking, so the button placement is self-documenting: the lock sits next to the thing it protects.
 
 If the crumb can't be found (non-issue page, unfamiliar layout, Atlassian UI drift), fall back to floating **below** Jira's header bar (`top: 70px, right: 10px`) rather than at the very top — the top-right area is occupied by user menu / notifications / help icons.
 
@@ -57,7 +62,9 @@ Tradeoff: correlated failure with breadcrumb detection. If Jira changes how brea
 
 ### Why comments are blocked by the same selector as description
 
-Both use `.ak-renderer-document`. Comments are additionally wrapped in `.is-comment`. Accidental comment edits are just as annoying as accidental description edits, so the block applies to both. The toggle wording in `btn.title` names the scope ("title, description, comments") so the UI isn't misleading.
+Both the description and every comment render their content in `.ak-renderer-document`. Accidental comment edits are just as annoying as accidental description edits, so the block applies to both. The toggle wording in `btn.title` names the scope so the UI isn't misleading.
+
+**Note on `.is-comment`:** the class name suggests it identifies comments, but Playwright inspection revealed that descriptions *also* have `.is-comment` on a wrapper. Don't rely on it to distinguish comments from the description. If that distinction becomes necessary, use `[data-testid="issue.views.field.rich-text.description"]` for the description positively instead of trying to negate-match comments.
 
 ### Why the breadcrumb self-reference is blocked
 
@@ -75,15 +82,20 @@ The button lives either inside the breadcrumb (when anchoring succeeds) or as a 
 
 Accidental edits are the problem the extension exists to solve. Failing open (default-allowed) defeats the purpose. Users who want it off can toggle — that state persists.
 
-### Why Esc → Cancel uses bubble phase, not capture
+### Why Esc → Cancel uses capture phase (reversed from earlier versions)
 
-The Esc handler lives alongside the click blocker but with opposite propagation intent. The click blocker uses *capture* to run before Jira's own handlers. The Esc handler uses *bubble* so Atlaskit editor features (mention popups, autocomplete, slash-command menus) get Esc first and can `stopPropagation()` if they're handling dismissal. Only if Esc bubbles all the way to `document` without being consumed do we treat it as "user wants out of edit mode" and click Cancel.
+An earlier version used bubble phase to let Atlaskit editor features (mention popups, autocomplete) get Esc first. Playwright inspection showed the handler never fired: Atlaskit's own editor installs an Esc listener that closes the editor *silently* (without explicit Save or Cancel) before the event ever reaches document's bubble phase. Our bubble-phase listener was dead code.
 
-Cancel lookup walks up from the focused contenteditable searching ancestors for a `<button>` with text exactly `"Cancel"`. Nearest-wins, so if multiple fields are in edit mode, we cancel the active one (the one with focus).
+Capture is mandatory here. When our handler fires and successfully clicks Cancel, we `stopImmediatePropagation()` + `preventDefault()` so Atlaskit's later handler can't interfere. When we don't find Cancel (no contenteditable focused, no button to click), we let the event continue — so Atlaskit's native Esc handling still works for unrelated contexts.
+
+Tradeoff with capture: if Atlaskit pops up a mention dropdown inside the editor and you press Esc to dismiss it, our handler fires first and clicks Cancel (exiting the whole editor). Not ideal, but acceptable — the user can re-enter edit mode if they got out by accident. If this becomes a pain point, tighten the contenteditable check to also require that no floating dropdown/menu is open.
+
+### Why Cancel uses `data-testid="comment-cancel-button"` with text fallback
+
+Atlaskit gives both the description editor's and comment editor's Cancel button the same testid: `comment-cancel-button`. (The name is misleadingly "comment-" even for the description editor, but it's stable.) Testid is more robust than text matching across Atlassian UI versions and localization. Fallback to walking up from the editor searching for a `<button>` with text `"Cancel"` handles cases where Atlaskit renames or removes the testid.
 
 **Known limits:**
-- English UI assumed — "Cancel" literal match. Localized Jira would need the label swapped.
-- Applies to any contenteditable, not just the description. Side effect: Esc also cancels comment/subtask edits. Probably a feature.
+- English fallback only. Localized Jira relies on the testid working; if it's renamed *and* locale changes the label, the fallback also fails.
 - Jira may show a "Discard changes?" confirm dialog when Cancel is clicked with unsaved changes. That's Jira's behavior; we don't override it.
 
 ## Known risks

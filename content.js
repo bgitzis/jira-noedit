@@ -1,11 +1,15 @@
 (function () {
   'use strict';
 
-  // `.ak-renderer-document` is used for both the description and every comment
-  // body. Blocking clicks on any of them prevents accidental entry into edit
-  // mode. Comments are wrapped in `.is-comment`; description isn't.
+  // `.ak-renderer-document` is used for the description and every comment
+  // body (and, confusingly, has `.is-comment` on one of its wrappers for
+  // descriptions too — ignore that class, it's not a reliable "is comment"
+  // signal). Blocking clicks on any `.ak-renderer-document` prevents
+  // accidental entry into edit mode on any of them.
   const BODY_SELECTOR = '.ak-renderer-document';
   const TITLE_SELECTOR = 'h1[data-testid="issue.views.issue-base.foundation.summary.heading"]';
+  const BREADCRUMB_CRUMB_TESTID = 'issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container';
+  const CANCEL_BUTTON_TESTID = 'comment-cancel-button';
   const BUTTON_ID = 'jira-noedit-toggle';
   const STORAGE_KEY = 'jira-noedit-blocked';
   const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
@@ -50,7 +54,7 @@
   function styleFloating(btn) {
     Object.assign(btn.style, {
       position: 'fixed',
-      top: '70px', // below Jira's top chrome so it doesn't overlap user settings
+      top: '70px',
       right: '10px',
       zIndex: '2147483647',
       padding: '6px 10px',
@@ -69,11 +73,16 @@
     return m ? m[1] : null;
   }
 
-  // Find the breadcrumb's current-issue crumb. Preferred signal is an <a>
-  // whose href points to /browse/<CURRENT_KEY> with text equal to that key.
-  // Fallback: any small element whose trimmed text equals the key and which
-  // sits near the top of the viewport (breadcrumb area).
-  function findBreadcrumbCrumb() {
+  // Breadcrumb anchor preference:
+  //   1. The stable Atlaskit testid container — most robust.
+  //   2. An <a href="/browse/<KEY>"> with text = KEY — heuristic fallback.
+  //   3. Any short-text element at the top of the viewport with text = KEY.
+  // Returns { parent, after } describing where to insert the toggle button,
+  // or null if we can't find an anchor.
+  function findBreadcrumbAnchor() {
+    const container = document.querySelector(`[data-testid="${BREADCRUMB_CRUMB_TESTID}"]`);
+    if (container) return { parent: container, after: container.lastElementChild };
+
     const key = getCurrentIssueKey();
     if (!key || !ISSUE_KEY_RE.test(key)) return null;
 
@@ -81,15 +90,20 @@
     const links = document.querySelectorAll('a[href]');
     for (const a of links) {
       if (!selfHrefRe.test(a.getAttribute('href') || '')) continue;
-      if ((a.textContent || '').trim() === key) return a;
+      if ((a.textContent || '').trim() === key && a.parentElement) {
+        return { parent: a.parentElement, after: a };
+      }
     }
 
     const candidates = document.querySelectorAll('a, button, span');
     for (const el of candidates) {
       if ((el.textContent || '').trim() !== key) continue;
       const rect = el.getBoundingClientRect();
-      if (rect.top >= 0 && rect.top < BREADCRUMB_TOP_MAX_PX) return el;
+      if (rect.top >= 0 && rect.top < BREADCRUMB_TOP_MAX_PX && el.parentElement) {
+        return { parent: el.parentElement, after: el };
+      }
     }
+
     return null;
   }
 
@@ -97,20 +111,18 @@
     if (document.getElementById(BUTTON_ID)) return;
 
     const btn = buildButton();
-    const crumb = findBreadcrumbCrumb();
+    const anchor = findBreadcrumbAnchor();
 
-    if (crumb && crumb.parentElement) {
+    if (anchor) {
       styleInline(btn);
-      crumb.parentElement.insertBefore(btn, crumb.nextSibling);
+      const refNode = anchor.after ? anchor.after.nextSibling : anchor.parent.firstChild;
+      anchor.parent.insertBefore(btn, refNode);
     } else {
       styleFloating(btn);
       document.body.appendChild(btn);
     }
   }
 
-  // Breadcrumb self-reference: element (or a close ancestor) whose trimmed
-  // text equals the current URL's issue key, or an <a> whose href points to
-  // the current issue. Clicking this self-link in Jira activates summary edit.
   function isCurrentIssueSelfReference(target) {
     const key = getCurrentIssueKey();
     if (!key || !ISSUE_KEY_RE.test(key)) return false;
@@ -118,7 +130,7 @@
     const selfHrefRe = new RegExp(`/browse/${key}(?:[/?#]|$)`);
     let node = target;
     for (let i = 0; i < BREADCRUMB_WALK_MAX && node; i++) {
-      if (node.id === BUTTON_ID) return false; // never block our own toggle
+      if (node.id === BUTTON_ID) return false;
       if (node.tagName === 'A' && selfHrefRe.test(node.getAttribute('href') || '')) {
         return true;
       }
@@ -142,21 +154,29 @@
     }
   }
 
-  // Esc while focus is inside any contenteditable → click the nearest Cancel
-  // button walking up the DOM. Saves scrolling to the bottom of long AI-written
-  // descriptions after accidental entry into edit mode.
-  // Bubble phase (not capture) so Atlaskit editor handlers get Esc first
-  // (mention popups, autocomplete, etc. can dismiss and stopPropagation).
+  // Esc while focus is inside any contenteditable → click the Atlaskit
+  // Cancel button. Preferred target: [data-testid="comment-cancel-button"]
+  // (Atlaskit names it "comment-" for both description and comment editors).
+  // Fall back to walking up from the editor looking for a button whose text
+  // is exactly "Cancel".
+  //
+  // Capture phase is mandatory: Atlaskit's editor installs its own Esc
+  // handler that closes the editor (without explicitly discarding) before
+  // the event reaches document's bubble phase, so a bubble listener never
+  // sees Esc at all. Capture runs first, giving us a chance to click Cancel.
   function handleEscape(e) {
     if (e.key !== 'Escape') return;
     const active = document.activeElement;
-    if (!active) {
-      console.log('[jira-noedit] Esc: no active element');
-      return;
-    }
+    if (!active) return;
     const editor = active.closest('[contenteditable="true"]');
-    if (!editor) {
-      console.log('[jira-noedit] Esc: active element not inside contenteditable', active);
+    if (!editor) return;
+
+    const byTestId = document.querySelector(`[data-testid="${CANCEL_BUTTON_TESTID}"]`);
+    if (byTestId) {
+      byTestId.click();
+      console.log('[jira-noedit] Esc → Cancel (by testid) clicked');
+      e.stopImmediatePropagation();
+      e.preventDefault();
       return;
     }
 
@@ -167,8 +187,10 @@
       const buttons = container.querySelectorAll('button');
       for (const b of buttons) {
         if ((b.textContent || '').trim() === 'Cancel') {
-          console.log('[jira-noedit] Esc → Cancel clicked at depth', depth);
           b.click();
+          console.log('[jira-noedit] Esc → Cancel (by text) clicked at depth', depth);
+          e.stopImmediatePropagation();
+          e.preventDefault();
           return;
         }
       }
@@ -178,7 +200,7 @@
   }
 
   document.addEventListener('click', blockClicks, true);
-  document.addEventListener('keydown', handleEscape, false);
+  document.addEventListener('keydown', handleEscape, true);
 
   // Button may live inside the breadcrumb, which re-renders on SPA nav and
   // route changes. subtree:true is required to detect disappearance anywhere
