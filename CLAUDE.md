@@ -2,6 +2,11 @@
 
 Guidance for Claude Code (and future-me) when working on this repo.
 
+**See also:**
+- `docs/development.md` — dev loop, testing, Playwright MCP workflow, git setup
+- `docs/atlaskit.md` — verified Atlaskit/Jira testids and DOM patterns; update when selectors drift
+- `docs/publishing.md` — what it'd take to ship to Chrome Web Store (not done yet)
+
 ## What this is
 
 A minimal Manifest V3 Chrome extension with three behaviors on Jira:
@@ -130,23 +135,12 @@ Any other click → click Save. No-op if there's no open editor.
 - **`chrome.storage` permission.** `localStorage` is sufficient for a boolean flag. Only switch if syncing across devices becomes a requirement.
 - **Popup UI.** The floating toggle button is enough. A popup means an extension icon, a new HTML file, and adds nothing users can't do inline.
 - **Selector auto-discovery / "smart" fallbacks.** If Atlassian changes selectors, fix the constants. Heuristics that "find the description by walking the DOM" tend to break in different ways and mask the failure (see the anchored-button section — we tried the heuristic route and it didn't pay off).
-- **Icons, store listing, packaging.** Loaded unpacked, personal use. Publishing to the Chrome Web Store would require icons, a privacy policy, and review — not worth it.
+- **Icons, store listing, packaging** *(for now).* Not needed for load-unpacked personal use. If/when publishing becomes worthwhile, see `docs/publishing.md` for the full checklist.
 - **Locale-aware Cancel detection.** Only worth adding when someone running a non-English Jira complains.
 
 ## Testing after changes
 
-There are no automated tests. After any change:
-
-1. Reload the extension on `chrome://extensions` (refresh icon on the card).
-2. Hard-reload a Jira issue page.
-3. Verify:
-   - 🔒 button visible top-right
-   - Clicks on title, description, comments, and the current-issue breadcrumb are blocked
-   - Toggle to 🔓 → clicks enter edit mode normally
-   - SPA nav to another issue preserves button and toggle state
-   - Hard-refresh preserves toggle state (via `localStorage`)
-   - Esc inside an open editor clicks Cancel
-4. Edge cases: navigate to a board/dashboard (no issue content) — button still visible, no errors, nothing to block.
+There are no automated tests. Full checklist and Playwright MCP workflow live in `docs/development.md`. Minimum: reload the extension, hard-reload a Jira issue, verify the three behaviors (block, Esc→Cancel, click-outside→Save) on both `/browse/<KEY>` and `?selectedIssue=<KEY>` URLs.
 
 ## File layout
 
@@ -155,5 +149,9 @@ jira-noedit/
 ├── manifest.json     # MV3, matches *.atlassian.net/*, content script only
 ├── content.js        # The whole extension
 ├── README.md         # User-facing: install, use, troubleshoot
-└── CLAUDE.md         # This file
+├── CLAUDE.md         # This file — design decisions
+└── docs/
+    ├── development.md  # Dev loop, testing, Playwright workflow, git setup
+    ├── atlaskit.md     # Verified Atlaskit testids, DOM patterns, URL patterns
+    └── publishing.md   # Chrome Web Store requirements, if/when to ship
 ```

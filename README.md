@@ -24,4 +24,9 @@ Scoped to Atlassian Cloud (`https://*.atlassian.net/*`). To narrow it to a singl
 - **Description/comment clicks still edit**: `.ak-renderer-document` may have been renamed. Update `BODY_SELECTOR` in `content.js`.
 - **Reset toggle state**: DevTools console on any Jira page → `localStorage.removeItem('jira-noedit-blocked')` → reload.
 
-See `CLAUDE.md` for design decisions and tradeoffs.
+## Documentation
+
+- `CLAUDE.md` — design decisions, tradeoffs, what not to add
+- `docs/development.md` — dev loop, testing, Playwright MCP workflow
+- `docs/atlaskit.md` — verified Atlaskit testids and DOM patterns
+- `docs/publishing.md` — what it'd take to ship to the Chrome Web Store
