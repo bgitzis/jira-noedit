@@ -4,12 +4,13 @@ Guidance for Claude Code (and future-me) when working on this repo.
 
 ## What this is
 
-A minimal Manifest V3 Chrome extension with two behaviors on Jira:
+A minimal Manifest V3 Chrome extension with three behaviors on Jira:
 
 1. **Block click-to-edit** on issue title, description, every comment, and the self-referencing breadcrumb (the last crumb, when its key matches the URL). Toggleable via a 🔒 / 🔓 button placed next to the breadcrumb crumb (or floating below the header as a fallback).
-2. **Bind Esc → Cancel.** When focus is inside any contenteditable (description/comment editor), pressing Esc clicks the nearest `Cancel` button — saves scrolling to the bottom of long AI-written descriptions after accidental entry into edit mode.
+2. **Esc → Cancel.** When focus is inside any contenteditable, pressing Esc clicks the Atlaskit Cancel button, silently discarding changes (Jira does not show a confirm dialog). Saves scrolling to the bottom of long AI-written descriptions after accidental entry into edit mode.
+3. **Click-outside → Save.** Google-sheet-cell behavior: when an editor is open and the user clicks anywhere outside the editor, its toolbar/popups, and the Save/Cancel buttons, commit by clicking Save.
 
-~100 lines of JS, one content script, no background worker, no popup.
+Works on direct issue pages (`/browse/<KEY>`) and in board/backlog side-panel views (`?selectedIssue=<KEY>`).
 
 Inspired by [this userscript gist](https://gist.github.com/fanuch/1511dd5423e0c68bb9d66f63b3a9c875) and the [Atlassian community thread](https://community.atlassian.com/forums/Jira-questions/How-do-I-disable-click-to-edit-description/qaq-p/2195913) where it evolved, but rebuilt as a standalone extension rather than a userscript.
 
@@ -56,6 +57,8 @@ Two properties worth preserving:
 
 All three lean on the same element we detect for self-reference click-blocking, so the button placement is self-documenting: the lock sits next to the thing it protects.
 
+**Re-evaluation on context change:** `placeButton` checks whether the current placement still matches the current DOM state on every observer tick. If the button is floating but a breadcrumb container has since appeared (e.g., user opened a side panel from a backlog view), it removes and re-places. If the breadcrumb disappears (side panel closes), it falls back to floating. An earlier version stopped at `if (getElementById(BUTTON_ID)) return` and got stuck in whatever mode it picked on first load.
+
 If the crumb can't be found (non-issue page, unfamiliar layout, Atlassian UI drift), fall back to floating **below** Jira's header bar (`top: 70px, right: 10px`) rather than at the very top — the top-right area is occupied by user menu / notifications / help icons.
 
 Tradeoff: correlated failure with breadcrumb detection. If Jira changes how breadcrumbs are rendered, the button moves to the fallback position. The fallback is intentionally visible (not hidden), so the user still has a working toggle even when anchoring fails.
@@ -90,13 +93,29 @@ Capture is mandatory here. When our handler fires and successfully clicks Cancel
 
 Tradeoff with capture: if Atlaskit pops up a mention dropdown inside the editor and you press Esc to dismiss it, our handler fires first and clicks Cancel (exiting the whole editor). Not ideal, but acceptable — the user can re-enter edit mode if they got out by accident. If this becomes a pain point, tighten the contenteditable check to also require that no floating dropdown/menu is open.
 
-### Why Cancel uses `data-testid="comment-cancel-button"` with text fallback
+### Why Cancel uses only `data-testid="comment-cancel-button"` (no text fallback)
 
-Atlaskit gives both the description editor's and comment editor's Cancel button the same testid: `comment-cancel-button`. (The name is misleadingly "comment-" even for the description editor, but it's stable.) Testid is more robust than text matching across Atlassian UI versions and localization. Fallback to walking up from the editor searching for a `<button>` with text `"Cancel"` handles cases where Atlaskit renames or removes the testid.
+Atlaskit gives both the description editor's and comment editor's Cancel button the same testid: `comment-cancel-button`. (The name is misleadingly "comment-" even for the description editor, but it's stable and visible in Atlassian's own DOM.)
 
-**Known limits:**
-- English fallback only. Localized Jira relies on the testid working; if it's renamed *and* locale changes the label, the fallback also fails.
-- Jira may show a "Discard changes?" confirm dialog when Cancel is clicked with unsaved changes. That's Jira's behavior; we don't override it.
+An earlier version had a fallback that walked up from the editor searching for a `<button>` with text `"Cancel"`. Removed deliberately: if the testid drifts, a text match on "Cancel" across the whole page is likely to hit the wrong button (unrelated modals, sidebar dialogs). A broken fallback silently succeeding is worse than failing loudly. If the testid disappears, we log a warning and the user updates `CANCEL_BUTTON_TESTID`.
+
+**Observed behavior:** Jira *does not* show a "Discard changes?" confirm dialog when Cancel is clicked with unsaved changes — it silently discards. Not ideal, but consistent with Atlaskit's native Cancel.
+
+### Why click-outside → Save, and how "outside" is defined
+
+User's mental model is Google Sheets: click a cell to edit, click away to commit, Esc to discard. Atlaskit's default is less forgiving (you have to click Save explicitly, and clicking elsewhere sometimes silently exits without saving). This handler makes Jira behave like the sheet-cell model.
+
+`handleClickOutsideSave` runs in capture phase, registered *before* `blockClicks` so the save fires even when the outside click targets a blockable element (e.g., clicking title while editing description saves the description, then the blocker prevents opening the title editor).
+
+"Outside" excludes:
+- Inside the editor container (`[data-testid*="editor-container"]`) — covers the contenteditable, floating toolbar, and Save/Cancel buttons rendered inside it
+- Inside any element with `role="menu"|"listbox"|"tooltip"|"dialog"` — Atlaskit portal popups (mention typeahead, emoji picker, link input)
+- Save or Cancel buttons themselves (in case Atlaskit renders them outside the editor container in some layouts)
+- Our own toggle button (id check)
+
+Any other click → click Save. No-op if there's no open editor.
+
+**Recursion note:** when we call `saveBtn.click()`, a synthetic click event fires on the Save button. Our handler re-enters, sees `saveBtn.contains(e.target)`, and returns early. Clean.
 
 ## Known risks
 
