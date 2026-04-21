@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Jira Disable Inline Edit",
+  "version": "1.0.0",
+  "description": "Blocks Jira's click-to-edit on issue title and description. Toggle via floating 🔒 button.",
+  "content_scripts": [
+    {
+      "matches": ["https://bookmd.atlassian.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
