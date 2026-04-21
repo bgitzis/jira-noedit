@@ -220,6 +220,12 @@
     const editor = active.closest('[contenteditable="true"]');
     if (!editor) return;
 
+    // Defer Esc when a typeahead/menu is open inside the editor (e.g. @mention,
+    // emoji picker, slash-command menu). Atlaskit uses Esc to dismiss those
+    // without closing the editor. Our handler would otherwise cancel the whole
+    // editor on the first Esc, losing the user's intended two-step behavior.
+    if (document.querySelector('[role="listbox"], [role="menu"]')) return;
+
     const cancel = document.querySelector(`[data-testid="${CANCEL_BUTTON_TESTID}"]`);
     if (!cancel) {
       console.warn('[jira-noedit] Esc: Cancel button testid not found on page');

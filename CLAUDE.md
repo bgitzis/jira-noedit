@@ -91,7 +91,7 @@ An earlier version used bubble phase to let Atlaskit editor features (mention po
 
 Capture is mandatory here. When our handler fires and successfully clicks Cancel, we `stopImmediatePropagation()` + `preventDefault()` so Atlaskit's later handler can't interfere. When we don't find Cancel (no contenteditable focused, no button to click), we let the event continue — so Atlaskit's native Esc handling still works for unrelated contexts.
 
-Tradeoff with capture: if Atlaskit pops up a mention dropdown inside the editor and you press Esc to dismiss it, our handler fires first and clicks Cancel (exiting the whole editor). Not ideal, but acceptable — the user can re-enter edit mode if they got out by accident. If this becomes a pain point, tighten the contenteditable check to also require that no floating dropdown/menu is open.
+Capture phase has one trap: if a typeahead is open (@mention, emoji picker, slash-command menu), Atlaskit uses Esc to dismiss just the popup without closing the editor. Our handler would otherwise hijack Esc and cancel the whole editor on the first press. Fix: when `[role="listbox"]` or `[role="menu"]` is present in the DOM, we early-return and let Atlaskit handle Esc. Second Esc (after popup is gone) cancels as expected.
 
 ### Why Cancel uses only `data-testid="comment-cancel-button"` (no text fallback)
 
