@@ -1,32 +1,40 @@
 (function () {
   'use strict';
 
+  // `.ak-renderer-document` is used for both the description and every comment
+  // body. Blocking clicks on any of them prevents accidental entry into edit
+  // mode. Comments are wrapped in `.is-comment`; description isn't.
   const BODY_SELECTOR = '.ak-renderer-document';
   const TITLE_SELECTOR = 'h1[data-testid="issue.views.issue-base.foundation.summary.heading"]';
-  const HEADING_TEXT = /description/i;
   const BUTTON_ID = 'jira-noedit-toggle';
   const STORAGE_KEY = 'jira-noedit-blocked';
-  const HEADING_WALK_MAX = 10;
+  const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
+  const BREADCRUMB_WALK_MAX = 6;
 
   // Persist toggle state across reloads. Default to blocked if unset.
   let editBlocked = localStorage.getItem(STORAGE_KEY) !== 'false';
 
-  function buildButton() {
+  function addFloatingButton() {
+    if (document.getElementById(BUTTON_ID)) return;
+
     const btn = document.createElement('button');
     btn.id = BUTTON_ID;
     btn.type = 'button';
     btn.textContent = editBlocked ? '🔒' : '🔓';
-    btn.title = 'Toggle Jira click-to-edit block';
+    btn.title = 'Toggle Jira click-to-edit block (title, description, comments)';
     Object.assign(btn.style, {
-      margin: '0 0 8px 0',
-      padding: '4px 10px',
-      fontSize: '14px',
-      lineHeight: '1.2',
+      position: 'fixed',
+      top: '10px',
+      right: '10px',
+      zIndex: '2147483647',
+      padding: '6px 10px',
+      fontSize: '16px',
+      lineHeight: '1',
       background: 'rgba(255,255,255,0.9)',
       border: '1px solid #ccc',
       borderRadius: '6px',
       cursor: 'pointer',
-      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
     });
 
     btn.addEventListener('click', (e) => {
@@ -37,43 +45,42 @@
       console.log('[jira-noedit] edit', editBlocked ? 'BLOCKED' : 'ALLOWED');
     });
 
-    return btn;
+    document.body.appendChild(btn);
   }
 
-  // Walk up from the renderer looking for an ancestor whose subtree also
-  // contains a "Description" heading in a sibling branch. That ancestor is
-  // the field section; inserting before `node` lands the button between the
-  // heading and the content box regardless of how many styled wrappers Jira
-  // nests the renderer in.
-  function findInsertionPoint() {
-    const renderer = document.querySelector(BODY_SELECTOR);
-    if (!renderer) return null;
+  function getCurrentIssueKey() {
+    const m = window.location.pathname.match(/\/browse\/([A-Z][A-Z0-9]*-\d+)/);
+    return m ? m[1] : null;
+  }
 
-    let node = renderer;
-    for (let i = 0; i < HEADING_WALK_MAX && node.parentElement; i++) {
-      const parent = node.parentElement;
-      const headings = parent.querySelectorAll('h1, h2, h3, h4, [role="heading"]');
-      for (const h of headings) {
-        if (HEADING_TEXT.test(h.textContent || '') && !node.contains(h)) {
-          return { parent, before: node };
-        }
+  // The breadcrumb's last crumb is the current issue's key as clickable text,
+  // and clicking it kicks the page into edit mode. Detect it by: clicked
+  // element (or a close ancestor) whose trimmed text equals the current URL's
+  // issue key, or an <a> whose href points to the current issue.
+  function isCurrentIssueSelfReference(target) {
+    const key = getCurrentIssueKey();
+    if (!key || !ISSUE_KEY_RE.test(key)) return false;
+
+    let node = target;
+    for (let i = 0; i < BREADCRUMB_WALK_MAX && node; i++) {
+      if (node.tagName === 'A') {
+        const href = node.getAttribute('href') || '';
+        if (new RegExp(`/browse/${key}(?:[/?#]|$)`).test(href)) return true;
       }
-      node = parent;
+      const text = (node.textContent || '').trim();
+      if (text === key) return true;
+      node = node.parentElement;
     }
-    return null;
-  }
-
-  function placeButton() {
-    if (document.getElementById(BUTTON_ID)) return;
-    const point = findInsertionPoint();
-    if (!point) return;
-    point.parent.insertBefore(buildButton(), point.before);
+    return false;
   }
 
   function blockClicks(e) {
     if (!editBlocked) return;
-    if (e.target.id === BUTTON_ID) return;
-    if (e.target.closest(BODY_SELECTOR) || e.target.closest(TITLE_SELECTOR)) {
+    if (
+      e.target.closest(BODY_SELECTOR) ||
+      e.target.closest(TITLE_SELECTOR) ||
+      isCurrentIssueSelfReference(e.target)
+    ) {
       e.stopImmediatePropagation();
       e.preventDefault();
       console.log('[jira-noedit] click-to-edit blocked on', e.target);
@@ -109,20 +116,20 @@
   document.addEventListener('click', blockClicks, true);
   document.addEventListener('keydown', handleEscape, false);
 
-  // Anchored placement needs to react to renderer appearing anywhere in the
-  // subtree (SPA nav into an issue, edit-mode → read-mode transition, etc.),
-  // so subtree:true is required here. Callback is cheap (id + selector check).
+  // Button lives as a direct child of `body`. Body persists across Jira's SPA
+  // route changes. Narrow observer to body childList (no subtree) to re-add
+  // the button if anything removes it. Cheap — one getElementById per mutation.
   function startObserver() {
-    const observer = new MutationObserver(placeButton);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const observer = new MutationObserver(addFloatingButton);
+    observer.observe(document.body, { childList: true });
   }
 
   if (document.body) {
-    placeButton();
+    addFloatingButton();
     startObserver();
   } else {
     document.addEventListener('DOMContentLoaded', () => {
-      placeButton();
+      addFloatingButton();
       startObserver();
     }, { once: true });
   }
