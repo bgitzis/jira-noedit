@@ -12,6 +12,8 @@
   const CANCEL_BUTTON_TESTID = 'comment-cancel-button';
   const EDITOR_CONTAINER_SELECTOR = '[data-testid*="editor-container"]';
   const POPUP_ROLE_SELECTOR = '[role="menu"], [role="listbox"], [role="tooltip"], [role="dialog"]';
+  const STATUS_TRANSITION_TESTID = 'issue-field-status.ui.status-view.transition';
+  const STATUS_PRIORITY_NAMES = ['to do', 'in progress', 'done'];
   const BUTTON_ID = 'jira-noedit-toggle';
   const STORAGE_KEY = 'jira-noedit-blocked';
   const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
@@ -244,17 +246,73 @@
   document.addEventListener('click', blockClicks, true);
   document.addEventListener('keydown', handleEscape, true);
 
+  // Move "To Do", "In Progress", "Done" to the top of the status transition
+  // listbox so the common cases are reachable without scrolling past every
+  // workflow state. The dropdown opens as a `<div role="listbox">` whose
+  // children each contain `[data-testid="issue-field-status.ui.status-view.transition"]`.
+  // The current status is omitted by Jira (you can't transition to your
+  // current state), so on a "To Do" issue only "In Progress" and "Done" are
+  // moved — this is expected.
+  //
+  // The reorder runs on every observer tick. If priority items are already
+  // first in DOM order, do nothing. The listbox isn't React-virtualized for
+  // workflows of this size, and React doesn't re-render unless state
+  // changes, so DOM mutations stick.
+  function reorderStatusDropdown() {
+    const listboxes = document.querySelectorAll('[role="listbox"]');
+    for (const listbox of listboxes) {
+      const transitions = listbox.querySelectorAll(
+        `[data-testid="${STATUS_TRANSITION_TESTID}"]`
+      );
+      if (transitions.length === 0) continue;
+
+      const picks = [];
+      for (const t of transitions) {
+        const idx = STATUS_PRIORITY_NAMES.indexOf(
+          (t.textContent || '').trim().toLowerCase()
+        );
+        if (idx === -1) continue;
+        let child = t;
+        while (child.parentElement && child.parentElement !== listbox) {
+          child = child.parentElement;
+        }
+        if (child.parentElement === listbox) picks.push({ idx, child });
+      }
+      if (picks.length === 0) continue;
+
+      picks.sort((a, b) => a.idx - b.idx);
+
+      let alreadyOrdered = true;
+      for (let i = 0; i < picks.length; i++) {
+        if (listbox.children[i] !== picks[i].child) {
+          alreadyOrdered = false;
+          break;
+        }
+      }
+      if (alreadyOrdered) continue;
+
+      for (let i = picks.length - 1; i >= 0; i--) {
+        listbox.insertBefore(picks[i].child, listbox.firstChild);
+      }
+    }
+  }
+
+  function onMutation() {
+    placeButton();
+    reorderStatusDropdown();
+  }
+
   function startObserver() {
-    const observer = new MutationObserver(placeButton);
+    const observer = new MutationObserver(onMutation);
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.body) {
-    placeButton();
+    onMutation();
     startObserver();
   } else {
     document.addEventListener('DOMContentLoaded', () => {
-      placeButton();
+      onMutation();
       startObserver();
     }, { once: true });
   }

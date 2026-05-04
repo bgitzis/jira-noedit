@@ -9,11 +9,12 @@ Guidance for Claude Code (and future-me) when working on this repo.
 
 ## What this is
 
-A minimal Manifest V3 Chrome extension with three behaviors on Jira:
+A minimal Manifest V3 Chrome extension with four behaviors on Jira:
 
 1. **Block click-to-edit** on issue title, description, every comment, and the self-referencing breadcrumb (the last crumb, when its key matches the URL). Toggleable via a 🔒 / 🔓 button placed next to the breadcrumb crumb (or floating below the header as a fallback).
 2. **Esc → Cancel.** When focus is inside any contenteditable, pressing Esc clicks the Atlaskit Cancel button, silently discarding changes (Jira does not show a confirm dialog). Saves scrolling to the bottom of long AI-written descriptions after accidental entry into edit mode.
 3. **Click-outside → Save.** Google-sheet-cell behavior: when an editor is open and the user clicks anywhere outside the editor, its toolbar/popups, and the Save/Cancel buttons, commit by clicking Save.
+4. **Status dropdown reorder.** Move "To Do", "In Progress", "Done" to the top of the status transition listbox so the common transitions are reachable without scrolling past every workflow state. The current status isn't in the listbox (Jira hides it — you can't transition to where you already are), so on a "To Do" issue only "In Progress" and "Done" surface at the top.
 
 Works on direct issue pages (`/browse/<KEY>`) and in board/backlog side-panel views (`?selectedIssue=<KEY>`).
 
@@ -86,6 +87,14 @@ The button lives either inside the breadcrumb (when anchoring succeeds) or as a 
 
 **Historical note:** an earlier version used `subtree: false` when the button was a body-direct-child only. That was correct for its design. The switch to breadcrumb anchoring made the narrower scope insufficient. Classic Chesterton's fence: observer scope depends on where the button lives.
 
+### Why the status dropdown is reordered in the existing observer
+
+The status dropdown opens as `<div role="listbox">` whose direct children each contain `[data-testid="issue-field-status.ui.status-view.transition"]`. Reorder runs from the same MutationObserver that places the toggle button — both are cheap when nothing matches (`querySelectorAll('[role="listbox"]')` returns nothing on most ticks) and the reorder short-circuits when priority items are already first in DOM order. No separate observer.
+
+The listbox itself has no testid; we identify it by the presence of transition-children, which keeps the reorder scoped to the status field even though `[role="listbox"]` is generic. `closest`/wrapping search walks up to the listbox so we move the right ancestor (Jira wraps each transition in extra divs that hold the lozenge styling — moving the inner element alone would leave the wrapper behind).
+
+DOM mutations stick because Jira doesn't re-render the listbox between opens (no virtualization at this size, and there's no React state change to reconcile against). If Atlassian moves to a virtualized list, this approach will need to switch to intercepting the data feeding the list — flagging here for the next time it breaks.
+
 ### Why default-blocked
 
 Accidental edits are the problem the extension exists to solve. Failing open (default-allowed) defeats the purpose. Users who want it off can toggle — that state persists.
@@ -126,7 +135,7 @@ Any other click → click Save. No-op if there's no open editor.
 
 - **Atlassian UI changes.** `data-testid` values and class names (`.ak-renderer-document`, the title `data-testid`) shift periodically. The July 2025 Jira UI rollout broke earlier versions of similar scripts. Expect to update selectors every few months.
 - **Keyboard edit shortcuts.** This script only blocks mouse clicks. If Jira adds (or already has) keyboard shortcuts to enter edit mode, they are not blocked. Out of scope unless someone asks.
-- **Localization.** "Cancel" text match is English-only.
+- **Localization.** "Cancel" text match is English-only. Status priority list (`STATUS_PRIORITY_NAMES`) is also English-only — non-English Jiras will see no reorder, which fails open and is acceptable.
 - **Self-link false positives.** Rare, but any clickable element on the page whose trimmed text equals the current issue key will be blocked. No known harm — clicking such a link would self-navigate anyway.
 
 ## What NOT to add

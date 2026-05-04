@@ -1,10 +1,11 @@
 # jira-noedit
 
-Chrome extension with three behaviors on Jira issue pages:
+Chrome extension with four behaviors on Jira issue pages:
 
 - **Blocks click-to-edit** on issue title, description, comments, and the current-issue breadcrumb self-link. A 🔒 / 🔓 button appears next to the current-issue breadcrumb (falls back to floating below the header if the breadcrumb can't be found); click it to toggle.
 - **Esc → Cancel.** Inside any description/comment editor, Esc clicks Cancel (silently discards changes — Jira does not show a confirm dialog).
 - **Click-outside → Save.** While editing, clicking anywhere outside the editor (and its toolbar/popups/Save-Cancel buttons) commits by clicking Save. Google-sheet-cell behavior.
+- **Status dropdown reorder.** Pulls "To Do", "In Progress", and "Done" to the top of the status transition list so the common transitions are reachable without scrolling past every workflow state.
 
 Works on direct issue pages and in board/backlog side-panel views.
 
