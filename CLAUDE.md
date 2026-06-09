@@ -3,6 +3,7 @@
 Guidance for Claude Code (and future-me) when working on this repo.
 
 **See also:**
+- `docs/behaviors.md` — the behavioral contract: trigger/scope/exclusion/outcome for each behavior; update when a behavior changes
 - `docs/development.md` — dev loop, testing, Playwright MCP workflow, git setup
 - `docs/atlaskit.md` — verified Atlaskit/Jira testids and DOM patterns; update when selectors drift
 - `docs/publishing.md` — what it'd take to ship to Chrome Web Store (not done yet)
@@ -162,6 +163,7 @@ jira-noedit/
 ├── README.md         # User-facing: install, use, troubleshoot
 ├── CLAUDE.md         # This file — design decisions
 └── docs/
+    ├── behaviors.md    # Behavioral contract per behavior (trigger/scope/exclusion/outcome)
     ├── development.md  # Dev loop, testing, Playwright workflow, git setup
     ├── atlaskit.md     # Verified Atlaskit testids, DOM patterns, URL patterns
     └── publishing.md   # Chrome Web Store requirements, if/when to ship
