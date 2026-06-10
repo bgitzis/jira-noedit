@@ -11,7 +11,8 @@ The stable selectors and findings this extension relies on. Updated when we veri
 | Description field wrapper | `[data-testid="issue.views.field.rich-text.description"]` | The field container. The actual rendered content is a `.ak-renderer-document` descendant. |
 | Description label | `[data-testid="issue.views.issue-base.common.description.label"]` | Collapse toggle + "Description" text. Not currently used. |
 | Description collapse toggle | `[data-testid="issue.views.common.collapsible-section.DESCRIPTION.toggle"]` | Button. Not currently used. |
-| Editor container (outermost) | `[data-testid="issue.views.field.rich-text.editor-container"]` | Wraps contenteditable, toolbar, and Save/Cancel buttons. `handleClickOutsideSave` excludes clicks inside this. |
+| Description editor container | `[data-testid="issue.views.field.rich-text.editor-container"]` | **Description only.** Wraps its contenteditable, toolbar, Save/Cancel. The **comment** editor has no `editor-container` testid at all — don't rely on this for comments. |
+| Editor widget (shared) | `[data-testid="issue.component.editor.default-editor"]` | Wraps the contenteditable + toolbar + Save/Cancel for **both** description and comment editors. `handleClickOutsideSave` treats clicks inside `EDITOR_WRAPPER_SELECTOR` (this **or** `*="editor-container"`) as "inside the editor". |
 | Editor (inner, ProseMirror) | `#ak-editor-textarea` (contenteditable="true") | The actual typing area. |
 | Save button | `[data-testid="comment-save-button"]` | Misleadingly named "comment-" but is the description's Save too. |
 | Cancel button | `[data-testid="comment-cancel-button"]` | Same "comment-" misnomer. Clicking silently discards (no confirm dialog). |

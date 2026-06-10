@@ -3,6 +3,7 @@
 Guidance for Claude Code (and future-me) when working on this repo.
 
 **See also:**
+- `docs/behaviors.md` — the behavioral contract: trigger/scope/exclusion/outcome for each behavior; update when a behavior changes
 - `docs/development.md` — dev loop, testing, Playwright MCP workflow, git setup
 - `docs/atlaskit.md` — verified Atlaskit/Jira testids and DOM patterns; update when selectors drift
 - `docs/publishing.md` — what it'd take to ship to Chrome Web Store (not done yet)
@@ -122,14 +123,16 @@ User's mental model is Google Sheets: click a cell to edit, click away to commit
 `handleClickOutsideSave` runs in capture phase, registered *before* `blockClicks` so the save fires even when the outside click targets a blockable element (e.g., clicking title while editing description saves the description, then the blocker prevents opening the title editor).
 
 "Outside" excludes:
-- Inside the editor container (`[data-testid*="editor-container"]`) — covers the contenteditable, floating toolbar, and Save/Cancel buttons rendered inside it
+- Inside the editor widget (`EDITOR_WRAPPER_SELECTOR`) — covers the contenteditable, floating toolbar, and Save/Cancel buttons rendered inside it
 - Inside any element with `role="menu"|"listbox"|"tooltip"|"dialog"` — Atlaskit portal popups (mention typeahead, emoji picker, link input)
-- Save or Cancel buttons themselves (in case Atlaskit renders them outside the editor container in some layouts)
+- Save or Cancel buttons themselves (in case Atlaskit renders them outside the editor widget in some layouts)
 - Our own toggle button (id check)
 
 Any other click → click Save. No-op if there's no open editor.
 
-**Recursion note:** when we call `saveBtn.click()`, a synthetic click event fires on the Save button. Our handler re-enters, sees `saveBtn.contains(e.target)`, and returns early. Clean.
+**Why `EDITOR_WRAPPER_SELECTOR` is two selectors, and why we test from the click target.** The description editor nests in `issue.views.field.rich-text.editor-container` (caught by the `*="editor-container"` substring). The **comment** editor has *no* `editor-container` testid anywhere in its ancestry — verified via Playwright. An earlier version computed `editor.closest('[data-testid*="editor-container"]')` (anchored at the open contenteditable), which returned `null` for comments, so the "inside" guard never fired and a click inside the comment body fell through to Save. Fix: (1) also match `issue.component.editor.default-editor`, the wrapper *both* editors share and which encloses their contenteditable + toolbar + Save/Cancel; (2) test `e.target.closest(EDITOR_WRAPPER_SELECTOR)` — from the click target upward, not from the contenteditable — so a click anywhere in the editor widget counts as inside.
+
+**Recursion note:** when we call `saveBtn.click()`, a synthetic click event fires on the Save button. The Save button is inside the editor wrapper (and the explicit `saveBtn.contains(e.target)` check is kept as a defensive backstop), so the handler re-enters and returns early. Clean.
 
 ## Known risks
 
@@ -160,6 +163,7 @@ jira-noedit/
 ├── README.md         # User-facing: install, use, troubleshoot
 ├── CLAUDE.md         # This file — design decisions
 └── docs/
+    ├── behaviors.md    # Behavioral contract per behavior (trigger/scope/exclusion/outcome)
     ├── development.md  # Dev loop, testing, Playwright workflow, git setup
     ├── atlaskit.md     # Verified Atlaskit testids, DOM patterns, URL patterns
     └── publishing.md   # Chrome Web Store requirements, if/when to ship

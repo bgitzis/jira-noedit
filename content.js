@@ -10,7 +10,15 @@
   const BREADCRUMB_CRUMB_TESTID = 'issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container';
   const SAVE_BUTTON_TESTID = 'comment-save-button';
   const CANCEL_BUTTON_TESTID = 'comment-cancel-button';
-  const EDITOR_CONTAINER_SELECTOR = '[data-testid*="editor-container"]';
+  // Wrappers that enclose an open editor's contenteditable, toolbar, and
+  // Save/Cancel buttons. The description field nests in
+  // `issue.views.field.rich-text.editor-container` (matched by the
+  // *=editor-container substring). The comment editor has NO editor-container
+  // testid anywhere in its ancestry, so we also match the
+  // `issue.component.editor.default-editor` wrapper that BOTH editors share.
+  // A click inside either wrapper is "inside the editor", not an outside click.
+  const EDITOR_WRAPPER_SELECTOR =
+    '[data-testid="issue.component.editor.default-editor"], [data-testid*="editor-container"]';
   const POPUP_ROLE_SELECTOR = '[role="menu"], [role="listbox"], [role="tooltip"], [role="dialog"]';
   const STATUS_TRANSITION_TESTID = 'issue-field-status.ui.status-view.transition';
   const STATUS_PRIORITY_NAMES = ['to do', 'in progress', 'done'];
@@ -185,14 +193,20 @@
   function handleClickOutsideSave(e) {
     if (e.target.id === BUTTON_ID) return;
 
-    const editor = document.querySelector('[contenteditable="true"]');
-    if (!editor) return;
+    // Only act when an editor is actually open.
+    if (!document.querySelector('[contenteditable="true"]')) return;
 
-    const editorContainer = editor.closest(EDITOR_CONTAINER_SELECTOR);
-    if (editorContainer && editorContainer.contains(e.target)) return;
+    // Click inside the editor widget (contenteditable, toolbar, Save/Cancel)?
+    // Then it's not an "outside" click. We test from the click target upward
+    // (not from the contenteditable) so clicks anywhere in the editor wrapper
+    // count as inside — this is what makes comment editing work: the comment
+    // editor lacks an editor-container testid, so anchoring at the
+    // contenteditable used to find no wrapper and a click inside the comment
+    // body fell through to Save.
+    if (e.target.closest(EDITOR_WRAPPER_SELECTOR)) return;
 
     // Atlaskit renders mention typeahead, emoji picker, link inputs, etc.
-    // as React portals outside the editor container. Skip clicks in them.
+    // as React portals outside the editor wrapper. Skip clicks in them.
     if (e.target.closest(POPUP_ROLE_SELECTOR)) return;
 
     const saveBtn = document.querySelector(`[data-testid="${SAVE_BUTTON_TESTID}"]`);
